@@ -1,4 +1,5 @@
 import highsLoader, { HighsSolution } from 'highs';
+import { writeFileSync } from 'fs';
 
 enum ItemType {
     ammo = 'ammo',
@@ -68,9 +69,9 @@ function generateCPLEXLP(
     lpFile += items.map((_, i) => `x${i + 1}`).join(' + ');
     lpFile += ` <= ${maximumNumberOfItems}\n\n`;
 
-    // bound our items (no negatives, enforce zero for indices we want to exclude)
+    // bound our items
     lpFile += 'Bounds\n';
-    items.forEach((_, i) => {
+    items.forEach((item, i) => {
         lpFile += ` 0 <= x${i + 1} <= ${maximumNumberOfItems}\n`;
     });
     lpFile += '\n';
@@ -117,14 +118,12 @@ async function fetchAllItemMetadata(): Promise<ItemMetadata[]> {
     return data.items as ItemMetadata[];
 }
 
-function filterItems(items: ItemMetadata[]) {
-    // min price is arbitrary, in reality there should be no minimum price (since the optimal solution might
-    // be 1 390k item + 1 10k item) but we want to limit the solution space
-    const minBasePrice = 30000;
-    const maxBasePrice = Infinity;
-    // seems like armor/preset base prices include attachments/plates which is not reflected in the flea market price
-    const excludedItemTypes = [ItemType.preset, ItemType.armor];
-
+function filterItems(
+    items: ItemMetadata[],
+    minBasePrice: number,
+    maxBasePrice: number,
+    excludedItemTypes: ItemType[],
+): ItemMetadata[] {
     return items.filter(
         (item) =>
             item.basePrice &&
@@ -138,9 +137,9 @@ function filterItems(items: ItemMetadata[]) {
     );
 }
 
-function parseHighsSolution(
-    highsSolution: HighsSolution,
-): { count: number; item: ItemMetadata }[] {
+type Solution = { count: number; item: ItemMetadata }[];
+
+function parseHighsSolution(highsSolution: HighsSolution): Solution {
     const solution = [];
     for (const column of Object.values(highsSolution.Columns)) {
         const primal = column.Primal;
@@ -157,16 +156,52 @@ function parseHighsSolution(
     return solution;
 }
 
-const items = filterItems(await fetchAllItemMetadata());
+// get the "best" solutions (first one is optimal)
+function getBestSolutions(
+    items: ItemMetadata[],
+    minimumBasePriceSum: number,
+    maximumNumberOfItems: number,
+    numberOfSolutions: number,
+): Solution[] {
+    const solutions: Solution[] = [];
+    const excludedItemIds: string[] = [];
+    for (let i = 0; i < numberOfSolutions; i++) {
+        const filteredItems = items.filter(
+            (item) => !excludedItemIds.includes(item.id),
+        );
 
-const lp = generateCPLEXLP(items, 400000, 5);
+        const lp = generateCPLEXLP(
+            filteredItems,
+            minimumBasePriceSum,
+            maximumNumberOfItems,
+        );
 
-Bun.write('lp.txt', lp);
+        writeFileSync(`lp-${i}.txt`, lp);
 
-time = performance.now();
-const solution = highs.solve(lp);
-console.log(`solution found in ${performance.now() - time}ms`);
+        const solution = parseHighsSolution(highs.solve(lp));
+        solutions.push(solution);
+        excludedItemIds.push(...solution.map(({ item }) => item.id));
+    }
+    return solutions;
+}
 
-Bun.write('solution.txt', JSON.stringify(solution, null, 4));
+// min price is arbitrary, in reality there should be no minimum price (since the optimal solution might
+// be 1 390k item + 1 10k item) but we want to limit the solution space
+const itemMinBasePrice = 30000;
+const itemMaxBasePrice = Infinity;
+// seems like armor/preset base prices include attachments/plates which is not reflected in the flea market price
+const excludedItemTypes = [ItemType.preset, ItemType.armor, ItemType.rig];
 
-console.log(parseHighsSolution(solution));
+const items = filterItems(
+    await fetchAllItemMetadata(),
+    itemMinBasePrice,
+    itemMaxBasePrice,
+    excludedItemTypes,
+);
+
+// going too far away from the optimal solution will lead to some pretty bad ones (10 was too high)
+const solutions = getBestSolutions(items, 400000, 5, 5);
+
+console.log(solutions);
+
+writeFileSync('solutions.json', JSON.stringify(solutions, null, 4));
