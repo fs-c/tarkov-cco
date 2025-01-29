@@ -9,7 +9,7 @@
 	"dependencies": {
 		"@preact/signals": "^2.0.1",
 		"@tailwindcss/vite": "^4.0.0",
-		"highs": "^1.8.0",
+		"glpk.js": "^4.0.2",
 		"preact": "^10.20.0",
 		"tailwindcss": "^4.0.0"
 	},

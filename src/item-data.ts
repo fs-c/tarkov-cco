@@ -36,7 +36,58 @@ export interface ItemMetadata {
     basePrice: number;
 }
 
-async function fetchAllItemMetadata(): Promise<ItemMetadata[]> {
+export function getPrettyItemType(type: ItemType): string | undefined {
+    switch (type) {
+        case ItemType.ammo:
+            return 'Ammo';
+        case ItemType.ammoBox:
+            return 'Ammo Box';
+        case ItemType.armor:
+            return 'Armor';
+        case ItemType.armorPlate:
+            return 'Armor Plate';
+        case ItemType.backpack:
+            return 'Backpack';
+        case ItemType.barter:
+            return 'Barter';
+        case ItemType.container:
+            return 'Container';
+        case ItemType.glasses:
+            return 'Glasses';
+        case ItemType.grenade:
+            return 'Grenade';
+        case ItemType.gun:
+            return 'Gun';
+        case ItemType.headphones:
+            return 'Headphones';
+        case ItemType.helmet:
+            return 'Helmet';
+        case ItemType.injectors:
+            return 'Injector';
+        case ItemType.keys:
+            return 'Key';
+        case ItemType.meds:
+            return 'Med';
+        case ItemType.mods:
+            return 'Mod';
+        case ItemType.pistolGrip:
+            return 'Pistol Grip';
+        case ItemType.preset:
+            return 'Preset';
+        case ItemType.provisions:
+            return 'Provision';
+        case ItemType.rig:
+            return 'Rig';
+        case ItemType.suppressor:
+            return 'Suppressor';
+        case ItemType.wearable:
+            return 'Wearable';
+        default:
+            return undefined;
+    }
+}
+
+export async function fetchAllItemMetadata(): Promise<ItemMetadata[]> {
     const time = performance.now();
 
     const response = await fetch('https://api.tarkov.dev/graphql', {
@@ -65,7 +116,7 @@ async function fetchAllItemMetadata(): Promise<ItemMetadata[]> {
     return data.items as ItemMetadata[];
 }
 
-function filterItemsForSolver(
+export function filterItemsForSolver(
     items: ItemMetadata[],
     minBasePrice: number,
     maxBasePrice: number,
@@ -83,5 +134,3 @@ function filterItemsForSolver(
             !item.normalizedName.includes('-advertisement'),
     );
 }
-
-export { fetchAllItemMetadata, filterItemsForSolver };
