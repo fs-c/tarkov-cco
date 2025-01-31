@@ -12,6 +12,9 @@ import {
 } from './item-data';
 import { getBestSolutions } from './solver';
 import { formatPrice } from './utils';
+import uFuzzy from '@leeoniya/ufuzzy';
+
+const ufuzzy = new uFuzzy();
 
 export function App() {
     const allItems = useSignal<ItemMetadata[] | undefined>(undefined);
@@ -62,8 +65,9 @@ export function App() {
 
     const numberOfSolutions = useSignal(30);
 
+    // don't ever write to solutions directly, it should really be a computed/readonly but the value
+    // computation is async and this was the simplest way to do it
     const solutions = useSignal<{ item: ItemMetadata; count: number }[][]>([]);
-
     useSignalEffect(() => {
         if (filteredItems.value.length === 0) {
             return;
@@ -79,16 +83,65 @@ export function App() {
         });
     });
 
+    const itemListNameFilter = useSignal('');
+    const filteredItemsWithDiffNames = useComputed(() =>
+        filteredItemsWithDiff.value.map((item) => item.name),
+    );
+    const itemListContent = useComputed(() => {
+        const result = ufuzzy.search(
+            filteredItemsWithDiffNames.value,
+            itemListNameFilter.value,
+        );
+
+        const sortedIdxs = result[0] ?? [];
+        const info = result[1];
+
+        return [
+            ...sortedIdxs.map((sortedIdx, innerIdx) => ({
+                item: filteredItemsWithDiff.value[sortedIdx],
+                ranges: info?.ranges[innerIdx].reduce((acc, curr, idx) => {
+                    if (idx % 2 === 0) {
+                        acc.push(curr);
+                    } else {
+                        acc[acc.length - 1] = [acc[acc.length - 1], curr];
+                    }
+                    return acc;
+                }, []),
+            })),
+            ...filteredItemsWithDiff.value
+                .filter((_, idx) => !sortedIdxs.includes(idx))
+                .map((item) => ({
+                    item,
+                    ranges: [],
+                })),
+        ];
+    });
+
+    const onItemListNameFilterChange = (e: Event) => {
+        itemListNameFilter.value = (e.target as HTMLInputElement).value;
+    };
+
+    const onCombinationListItemClick = (item: ItemMetadata) => {
+        itemListNameFilter.value = item.name;
+    };
+
     return (
         <div className='min-h-screen min-w-screen bg-topography flex flex-row text-stone-300'>
-            <div className='flex flex-col gap-16 overflow-y-auto max-h-screen'>
-                <div className='px-8 py-8 flex flex-row gap-4 flex-wrap'>
+            <div className='flex flex-col overflow-y-auto max-h-screen px-8'>
+                <div className='py-8 flex flex-row gap-4 flex-wrap'>
                     {solutions.value.map((solution) => (
                         <div className='flex flex-col gap-4 bg-stone-900 p-4 rounded-md border-stone-800'>
                             <div className='flex flex-row gap-4'>
                                 {solution.map(({ count, item }) => (
-                                    <div className={'relative'}>
-                                        <div className='overflow-hidden rounded-md border border-stone-700'>
+                                    <div
+                                        className={
+                                            'relative cursor-pointer group'
+                                        }
+                                        onClick={() =>
+                                            onCombinationListItemClick(item)
+                                        }
+                                    >
+                                        <div className='overflow-hidden rounded-md border border-stone-700 group-hover:border-stone-400 transition-all'>
                                             <img
                                                 src={item.iconLink}
                                                 className='w-16 h-16 scale-[1.05] [clip-path:inset(1px)]'
@@ -109,37 +162,81 @@ export function App() {
 
                             <div className='flex flex-row gap-4 w-full text-stone-300'>
                                 <p>
-                                    {solution.reduce(
-                                        (acc, { count, item }) =>
-                                            acc + count * item.basePrice,
-                                        0,
+                                    {formatPrice(
+                                        solution.reduce(
+                                            (acc, { count, item }) =>
+                                                acc + count * item.basePrice,
+                                            0,
+                                        ),
                                     )}{' '}
-                                    Base
+                                    <span className='text-stone-400'>Base</span>
                                 </p>
 
                                 <p>
-                                    {solution.reduce(
-                                        (acc, { count, item }) =>
-                                            acc + count * item.lastLowPrice,
-                                        0,
+                                    {formatPrice(
+                                        solution.reduce(
+                                            (acc, { count, item }) =>
+                                                acc + count * item.lastLowPrice,
+                                            0,
+                                        ),
                                     )}{' '}
-                                    Flea
+                                    <span className='text-stone-400'>Flea</span>
                                 </p>
                             </div>
                         </div>
                     ))}
                 </div>
+
+                <div className='flex-grow'></div>
+
+                <div className='py-8 flex flex-col gap-2'>
+                    <p>
+                        Optimal{' '}
+                        <a
+                            className='underline'
+                            href='https://escapefromtarkov.fandom.com/wiki/Hideout#Cultist_Circle'
+                        >
+                            Tarkov Cultist Circle
+                        </a>{' '}
+                        inputs, using data from{' '}
+                        <a className='underline' href='https://tarkov.dev'>
+                            tarkov.dev
+                        </a>{' '}
+                        and{' '}
+                        <a className='underline' href='https://sp-tarkov.com/'>
+                            SPT
+                        </a>
+                        .
+                    </p>
+
+                    <p>
+                        <a
+                            className='underline'
+                            href='https://github.com/fs-c/tarkov-cco'
+                        >
+                            github/tarkov-cco
+                        </a>
+                    </p>
+                </div>
             </div>
 
             <div className='bg-stone-900 overflow-y-auto max-h-screen shrink-0 inline-grid grid-cols-[auto_auto_auto_auto_auto] gap-4'>
-                <div className='grid grid-cols-subgrid col-span-full px-4 py-4 text-stone-600 border-b border-stone-800 sticky top-0 bg-stone-900 z-10'>
-                    <div className='col-span-2'></div>
+                <div className='grid grid-cols-subgrid col-span-full px-4 py-4 text-stone-600 border-b border-stone-800 sticky top-0 bg-stone-900 z-10 h-min'>
+                    <div className='col-span-2'>
+                        <input
+                            type='text'
+                            className='w-full h-full outline-none text-stone-300'
+                            placeholder='Search...'
+                            value={itemListNameFilter.value}
+                            onInput={onItemListNameFilterChange}
+                        />
+                    </div>
                     <div>Base</div>
                     <div>Flea</div>
                     <div>Diff</div>
                 </div>
 
-                {filteredItemsWithDiff.value.map((item) => (
+                {itemListContent.value.map(({ item, ranges }) => (
                     <div className='grid grid-cols-subgrid col-span-full px-4'>
                         <div className='h-12 w-12 overflow-hidden rounded-md border border-stone-700'>
                             <img
@@ -150,7 +247,29 @@ export function App() {
                             />
                         </div>
                         <div className='w-max'>
-                            <p>{item.name}</p>
+                            <p>
+                                {/* here be dragons */}
+
+                                {ranges.map((range, i) => (
+                                    <>
+                                        {item.name.slice(
+                                            (ranges[i - 1] ?? [])[1] ?? 0,
+                                            range[0],
+                                        )}
+                                        <span className='underline'>
+                                            {item.name.slice(
+                                                range[0],
+                                                range[1],
+                                            )}
+                                        </span>
+                                    </>
+                                ))}
+
+                                {item.name.slice(
+                                    (ranges[ranges.length - 1] ?? [])[1] ?? 0,
+                                )}
+                            </p>
+
                             <p className='text-stone-500'>
                                 {item.types
                                     .map(getPrettyItemType)
