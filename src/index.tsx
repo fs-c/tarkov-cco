@@ -2,7 +2,7 @@ import { render } from 'preact';
 
 import './style.css';
 import { useComputed, useSignal, useSignalEffect } from '@preact/signals';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import {
     fetchAllItemMetadata,
     filterItemsForSolver,
@@ -13,6 +13,7 @@ import {
 import { getBestSolutions } from './solver';
 import { formatPrice } from './utils';
 import uFuzzy from '@leeoniya/ufuzzy';
+import { LoadingSpinner } from './components/LoadingSpinner';
 
 const ufuzzy = new uFuzzy();
 
@@ -117,7 +118,32 @@ export function App() {
         ];
     });
 
-    const onItemListNameFilterChange = (e: Event) => {
+    const searchInputRef = useRef<HTMLInputElement>();
+
+    // set up global "shortcuts":
+    //   - escape anywhereclears the search input
+    //   - typing anywhere focuses the search input
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (
+                document.activeElement === document.body &&
+                !e.ctrlKey &&
+                !e.altKey &&
+                !e.metaKey
+            ) {
+                searchInputRef.current?.focus();
+            }
+
+            if (e.key === 'Escape') {
+                itemListNameFilter.value = '';
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    });
+
+    const onItemListNameFilterChange = (e: InputEvent) => {
         itemListNameFilter.value = (e.target as HTMLInputElement).value;
     };
 
@@ -125,164 +151,195 @@ export function App() {
         itemListNameFilter.value = item.name;
     };
 
+    const isLoading = useComputed(() => {
+        return (
+            solutions.value.length === 0 ||
+            filteredItemsWithDiff.value.length === 0
+        );
+    });
+
     return (
-        <div className='min-h-screen min-w-screen bg-topography flex flex-row text-stone-300'>
-            <div className='flex flex-col overflow-y-auto max-h-screen px-8'>
-                <div className='py-8 flex flex-row gap-4 flex-wrap'>
-                    {solutions.value.map((solution) => (
-                        <div className='flex flex-col gap-4 bg-stone-900 p-4 rounded-md border-stone-800'>
-                            <div className='flex flex-row gap-4'>
-                                {solution.map(({ count, item }) => (
-                                    <div
-                                        className={
-                                            'relative cursor-pointer group'
-                                        }
-                                        onClick={() =>
-                                            onCombinationListItemClick(item)
-                                        }
-                                    >
-                                        <div className='overflow-hidden rounded-md border border-stone-700 group-hover:border-stone-400 transition-all'>
-                                            <img
-                                                src={item.iconLink}
-                                                className='w-16 h-16 scale-[1.05] [clip-path:inset(1px)]'
-                                                alt={item.name}
-                                                title={item.name}
-                                            />
-                                        </div>
+        <div className='bg-topography flex min-h-screen min-w-screen flex-row items-center justify-center text-stone-300'>
+            {isLoading.value ? (
+                <LoadingSpinner />
+            ) : (
+                <>
+                    <div className='flex max-h-screen flex-col overflow-y-auto px-8'>
+                        <div className='flex flex-row flex-wrap gap-4 py-8'>
+                            {solutions.value.map((solution) => (
+                                <div className='flex flex-col gap-4 rounded-md border-stone-800 bg-stone-900 p-4'>
+                                    <div className='flex flex-row gap-4'>
+                                        {solution.map(({ count, item }) => (
+                                            <div
+                                                className={
+                                                    'group relative cursor-pointer'
+                                                }
+                                                onClick={() =>
+                                                    onCombinationListItemClick(
+                                                        item,
+                                                    )
+                                                }
+                                            >
+                                                <div className='overflow-hidden rounded-md border border-stone-700 transition-all group-hover:border-stone-400'>
+                                                    <img
+                                                        src={item.iconLink}
+                                                        className='h-16 w-16 scale-[1.05] [clip-path:inset(1px)]'
+                                                        alt={item.name}
+                                                        title={item.name}
+                                                    />
+                                                </div>
 
-                                        {/* this is completely insane but otherwise the count didn't look centered */}
-                                        <div className='absolute bottom-0 right-0 aspect-square bg-stone-300 text-stone-900 rounded-full translate-x-1/2 translate-y-1/2 h-5 text-center text-sm font-semibold'>
-                                            <div className='absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'>
-                                                {count}
+                                                {/* this is completely insane but otherwise the count didn't look centered */}
+                                                <div className='absolute right-0 bottom-0 aspect-square h-5 translate-x-1/2 translate-y-1/2 rounded-full bg-stone-300 text-center text-sm font-semibold text-stone-900'>
+                                                    <div className='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'>
+                                                        {count}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
 
-                            <div className='flex flex-row gap-4 w-full text-stone-300'>
-                                <p>
-                                    {formatPrice(
-                                        solution.reduce(
-                                            (acc, { count, item }) =>
-                                                acc + count * item.basePrice,
-                                            0,
-                                        ),
-                                    )}{' '}
-                                    <span className='text-stone-400'>Base</span>
-                                </p>
+                                    <div className='flex w-full flex-row gap-4 text-stone-300'>
+                                        <p>
+                                            {formatPrice(
+                                                solution.reduce(
+                                                    (acc, { count, item }) =>
+                                                        acc +
+                                                        count * item.basePrice,
+                                                    0,
+                                                ),
+                                            )}{' '}
+                                            <span className='text-stone-400'>
+                                                Base
+                                            </span>
+                                        </p>
 
-                                <p>
-                                    {formatPrice(
-                                        solution.reduce(
-                                            (acc, { count, item }) =>
-                                                acc + count * item.lastLowPrice,
-                                            0,
-                                        ),
-                                    )}{' '}
-                                    <span className='text-stone-400'>Flea</span>
-                                </p>
-                            </div>
+                                        <p>
+                                            {formatPrice(
+                                                solution.reduce(
+                                                    (acc, { count, item }) =>
+                                                        acc +
+                                                        count *
+                                                            item.lastLowPrice,
+                                                    0,
+                                                ),
+                                            )}{' '}
+                                            <span className='text-stone-400'>
+                                                Flea
+                                            </span>
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
 
-                <div className='flex-grow'></div>
+                        <div className='flex-grow'></div>
 
-                <div className='py-8 flex flex-col gap-2'>
-                    <p>
-                        Optimal{' '}
-                        <a
-                            className='underline'
-                            href='https://escapefromtarkov.fandom.com/wiki/Hideout#Cultist_Circle'
-                        >
-                            Tarkov Cultist Circle
-                        </a>{' '}
-                        inputs, using data from{' '}
-                        <a className='underline' href='https://tarkov.dev'>
-                            tarkov.dev
-                        </a>{' '}
-                        and{' '}
-                        <a className='underline' href='https://sp-tarkov.com/'>
-                            SPT
-                        </a>
-                        .
-                    </p>
-
-                    <p>
-                        <a
-                            className='underline'
-                            href='https://github.com/fs-c/tarkov-cco'
-                        >
-                            github/tarkov-cco
-                        </a>
-                    </p>
-                </div>
-            </div>
-
-            <div className='bg-stone-900 overflow-y-auto max-h-screen shrink-0 inline-grid grid-cols-[auto_auto_auto_auto_auto] gap-4'>
-                <div className='grid grid-cols-subgrid col-span-full px-4 py-4 text-stone-600 border-b border-stone-800 sticky top-0 bg-stone-900 z-10 h-min'>
-                    <div className='col-span-2'>
-                        <input
-                            type='text'
-                            className='w-full h-full outline-none text-stone-300'
-                            placeholder='Search...'
-                            value={itemListNameFilter.value}
-                            onInput={onItemListNameFilterChange}
-                        />
-                    </div>
-                    <div>Base</div>
-                    <div>Flea</div>
-                    <div>Diff</div>
-                </div>
-
-                {itemListContent.value.map(({ item, ranges }) => (
-                    <div className='grid grid-cols-subgrid col-span-full px-4'>
-                        <div className='h-12 w-12 overflow-hidden rounded-md border border-stone-700'>
-                            <img
-                                className='scale-[1.05] [clip-path:inset(1px)]'
-                                src={item.iconLink ?? ''}
-                                alt={item.name}
-                                title={item.name}
-                            />
-                        </div>
-                        <div className='w-max'>
+                        <div className='flex flex-col gap-2 py-8'>
                             <p>
-                                {/* here be dragons */}
-
-                                {ranges.map((range, i) => (
-                                    <>
-                                        {item.name.slice(
-                                            (ranges[i - 1] ?? [])[1] ?? 0,
-                                            range[0],
-                                        )}
-                                        <span className='underline'>
-                                            {item.name.slice(
-                                                range[0],
-                                                range[1],
-                                            )}
-                                        </span>
-                                    </>
-                                ))}
-
-                                {item.name.slice(
-                                    (ranges[ranges.length - 1] ?? [])[1] ?? 0,
-                                )}
+                                Optimal{' '}
+                                <a
+                                    className='underline'
+                                    href='https://escapefromtarkov.fandom.com/wiki/Hideout#Cultist_Circle'
+                                >
+                                    Tarkov Cultist Circle
+                                </a>{' '}
+                                inputs, using data from{' '}
+                                <a
+                                    className='underline'
+                                    href='https://tarkov.dev'
+                                >
+                                    tarkov.dev
+                                </a>{' '}
+                                and{' '}
+                                <a
+                                    className='underline'
+                                    href='https://sp-tarkov.com/'
+                                >
+                                    SPT
+                                </a>
+                                .
                             </p>
 
-                            <p className='text-stone-500'>
-                                {item.types
-                                    .map(getPrettyItemType)
-                                    .filter(Boolean)
-                                    .join(', ')}
+                            <p>
+                                <a
+                                    className='underline'
+                                    href='https://github.com/fs-c/tarkov-cco'
+                                >
+                                    github/tarkov-cco
+                                </a>
                             </p>
                         </div>
-                        <div>{formatPrice(item.basePrice)}</div>
-                        <div>{formatPrice(item.lastLowPrice)}</div>
-                        <div>{formatPrice(item.diff)}</div>
                     </div>
-                ))}
-            </div>
+
+                    <div className='inline-grid max-h-screen shrink-0 grid-cols-[auto_auto_auto_auto_auto] gap-4 overflow-y-auto bg-stone-900'>
+                        <div className='sticky top-0 z-10 col-span-full grid h-min grid-cols-subgrid border-b border-stone-800 bg-stone-900 px-4 py-4 text-stone-600'>
+                            <div className='col-span-2'>
+                                <input
+                                    ref={searchInputRef}
+                                    type='text'
+                                    className='h-full w-full text-stone-300 outline-none'
+                                    placeholder='Search...'
+                                    value={itemListNameFilter.value}
+                                    onInput={onItemListNameFilterChange}
+                                />
+                            </div>
+                            <div>Base</div>
+                            <div>Flea</div>
+                            <div>Diff</div>
+                        </div>
+
+                        {itemListContent.value.map(({ item, ranges }) => (
+                            <div className='col-span-full grid grid-cols-subgrid px-4'>
+                                <div className='h-12 w-12 overflow-hidden rounded-md border border-stone-700'>
+                                    <img
+                                        className='scale-[1.05] [clip-path:inset(1px)]'
+                                        src={item.iconLink ?? ''}
+                                        alt={item.name}
+                                        title={item.name}
+                                    />
+                                </div>
+                                <div className='w-max'>
+                                    <p>
+                                        {/* here be dragons */}
+
+                                        {ranges.map((range, i) => (
+                                            <>
+                                                {item.name.slice(
+                                                    (ranges[i - 1] ?? [])[1] ??
+                                                        0,
+                                                    range[0],
+                                                )}
+                                                <span className='underline'>
+                                                    {item.name.slice(
+                                                        range[0],
+                                                        range[1],
+                                                    )}
+                                                </span>
+                                            </>
+                                        ))}
+
+                                        {item.name.slice(
+                                            (ranges[ranges.length - 1] ??
+                                                [])[1] ?? 0,
+                                        )}
+                                    </p>
+
+                                    <p className='text-stone-500'>
+                                        {item.types
+                                            .map(getPrettyItemType)
+                                            .filter(Boolean)
+                                            .join(', ')}
+                                    </p>
+                                </div>
+                                <div>{formatPrice(item.basePrice)}</div>
+                                <div>{formatPrice(item.lastLowPrice)}</div>
+                                <div>{formatPrice(item.diff)}</div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
         </div>
     );
 }
