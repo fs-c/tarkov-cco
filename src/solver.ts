@@ -3,13 +3,18 @@ import GLPK from 'glpk.js';
 
 export type Solution = { item: ItemMetadata; count: number }[];
 
-const glpk = await GLPK();
+let glpk: ReturnType<typeof GLPK> | undefined;
 
 async function getSolution(
     items: ItemMetadata[],
     minimumBasePriceSum: number,
     maximumNumberOfItems: number,
 ): Promise<{ item: ItemMetadata; count: number }[]> {
+    if (!glpk) {
+        console.log('initializing glpk');
+        glpk = await GLPK();
+    }
+
     const glpkResult = await glpk.solve({
         name: 'LP',
         objective: {
