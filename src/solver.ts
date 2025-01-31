@@ -1,6 +1,8 @@
 import { ItemMetadata } from './item-data';
 import GLPK from 'glpk.js';
 
+export type Solution = { item: ItemMetadata; count: number }[];
+
 const glpk = await GLPK();
 
 async function getSolution(
@@ -72,7 +74,7 @@ export async function getBestSolutions(
     minimumBasePriceSum: number,
     maximumNumberOfItems: number,
     numberOfSolutions: number,
-): Promise<{ item: ItemMetadata; count: number }[][]> {
+): Promise<Solution[]> {
     const solutions: { item: ItemMetadata; count: number }[][] = [];
     const excludedItemIds: string[] = [];
     for (let i = 0; i < numberOfSolutions; i++) {
